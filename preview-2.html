@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Stüdyo Fotoğraf Karar Motoru (Pro Analiz)</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#121c2f; --panel2:#0f172a;
+    --txt:#e5e7eb; --muted:#a1a1aa; --pri:#2563eb; --ok:#22c55e; --bad:#ef4444;
+    --line:rgba(255,255,255,.08);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);margin:0;padding:28px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 14px}
+  .sub{color:var(--muted);font-size:13px;line-height:1.4;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .card h3{margin:0 0 10px;font-size:16px}
+  .uploader{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  input[type=file]{background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:12px;color:var(--txt)}
+  .preview{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  img{max-width:100%;border-radius:12px;border:1px solid var(--line)}
+  .mini{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px}
+  .mini strong{display:block;margin-bottom:6px}
+  .btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  button{background:var(--pri);border:none;padding:12px 14px;border-radius:12px;color:#fff;font-weight:600;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  .result{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  @media(max-width:900px){.kpi{grid-template-columns:repeat(2,1fr)}}
+  .kpi .box{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .kpi .label{color:var(--muted);font-size:12px}
+  .kpi .val{font-size:18px;font-weight:700;margin-top:6px}
+  .bar{height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:10px}
+  .bar > div{height:100%;background:#60a5fa;width:0%}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  @media(max-width:900px){.split{grid-template-columns:1fr}}
+  .pill{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:12px;color:var(--muted);margin-right:6px;margin-top:6px}
+  .winner{font-size:18px;font-weight:800;margin:8px 0}
+  .why{color:var(--txt);line-height:1.55}
+  .muted{color:var(--muted)}
+  canvas{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stüdyo Fotoğraf Karar Motoru — Pro Analiz</h1>
+  <div class="sub">
+    2 fotoğraf yükle: sistem teknik kaliteyi + özne/yüz netliğini + kompozisyonu + renk/ton tutarlılığını + “yaratıcılık & zamansızlık” göstergelerini birlikte puanlar.
+    Duygu analizi %100 kesin değildir; burada “algıyı açıklayan” ölçümlerle karar çıktısı üretir.
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Stüdyo 1 Fotoğrafı</h3>
+      <div class="uploader">
+        <input type="file" id="image1" accept="image/*">
+        <span class="pill" id="status1">Bekliyor</span>
+      </div>
+      <canvas id="canvas1"></canvas>
+      <div class="preview">
+        <img id="preview1" alt="Stüdyo 1 Önizleme"/>
+        <div class="mini">
+          <strong>Özet</strong>
+          <div class="muted" id="sum1">Fotoğraf yüklenince analiz özetleri burada görünecek.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Stüdyo 2 Fotoğrafı</h3>
+      <div class="uploader">
+        <input type="file" id="image2" accept="image/*">
+        <span class="pill" id="status2">Bekliyor</span>
+      </div>
+      <canvas id="canvas2"></canvas>
+      <div class="preview">
+        <img id="preview2" alt="Stüdyo 2 Önizleme"/>
+        <div class="mini">
+          <strong>Özet</strong>
+          <div class="muted" id="sum2">Fotoğraf yüklenince analiz özetleri burada görünecek.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btnRow">
+    <button id="analyzeBtn">Analiz Et ve Karar Üret</button>
+    <button class="secondary" id="resetBtn">Sıfırla</button>
+  </div>
+
+  <div class="result" id="resultBox">
+    <div class="muted">Analiz çıktısı burada oluşacak.</div>
+  </div>
+</div>
+
+<script>
+/* =========================
+   UTIL
+========================= */
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const pct=(v)=>Math.round(clamp(v,0,1)*100);
+
+function setStatus(id, txt){ document.getElementById(id).textContent = txt; }
+
+async function loadToCanvas(file, canvas, previewEl){
+  const dataUrl = await new Promise((res,rej)=>{
+    const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);
+  });
+  previewEl.src = dataUrl;
+
+  const img = await new Promise((res,rej)=>{
+    const im=new Image();
+    im.onload=()=>res(im);
+    im.onerror=rej;
+    im.src=dataUrl;
+  });
+
+  // Downscale for performance (keeps analysis fast and consistent)
+  const maxSide = 1200;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  return { width: canvas.width, height: canvas.height };
+}
+
+function getImageData(canvas){
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  return ctx.getImageData(0,0,canvas.width,canvas.height);
+}
+
+function rgbToHsl(r,g,b){
+  r/=255; g/=255; b/=255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b);
+  let h=0,s=0,l=(max+min)/2;
+  if(max!==min){
+    const d=max-min;
+    s=l>0.5? d/(2-max-min) : d/(max+min);
+    switch(max){
+      case r: h=(g-b)/d + (g<b?6:0); break;
+      case g: h=(b-r)/d + 2; break;
+      case b: h=(r-g)/d + 4; break;
+    }
+    h/=6;
+  }
+  return {h,s,l};
+}
+
+/* =========================
+   METRICS (Professional-ish proxies)
+========================= */
+
+// Simple luminance
+function luminance(r,g,b){ return 0.2126*r + 0.7152*g + 0.0722*b; }
+
+// Edge strength via Sobel approx on luminance (fast)
+function sobelEdgeStats(imgData){
+  const {data, width, height} = imgData;
+  const w=width, h=height;
+  // sample stride for speed
+  const step = Math.max(1, Math.floor(Math.min(w,h)/450)); // adaptive
+  let sum=0, sumSq=0, n=0;
+
+  function lumAt(x,y){
+    const i=(y*w+x)*4;
+    return luminance(data[i],data[i+1],data[i+2]);
+  }
+
+  for(let y=1;y<h-1;y+=step){
+    for(let x=1;x<w-1;x+=step){
+      const gx =
+        -1*lumAt(x-1,y-1) + 1*lumAt(x+1,y-1) +
+        -2*lumAt(x-1,y  ) + 2*lumAt(x+1,y  ) +
+        -1*lumAt(x-1,y+1) + 1*lumAt(x+1,y+1);
+      const gy =
+        -1*lumAt(x-1,y-1) + -2*lumAt(x,y-1) + -1*lumAt(x+1,y-1) +
+         1*lumAt(x-1,y+1) +  2*lumAt(x,y+1) +  1*lumAt(x+1,y+1);
+      const mag = Math.sqrt(gx*gx + gy*gy);
+      sum += mag; sumSq += mag*mag; n++;
+    }
+  }
+  const mean = sum/n;
+  const varr = Math.max(0, sumSq/n - mean*mean);
+  const stdev = Math.sqrt(varr);
+  return { edgeMean: mean, edgeStd: stdev };
+}
+
+// Brightness/contrast summary
+function toneStats(imgData){
+  const {data} = imgData;
+  // sample stride for speed
+  const step = 16; // every 4 pixels (RGBA) -> skip more for speed
+  let sum=0, sumSq=0, n=0;
+  for(let i=0;i<data.length;i+=4*step){
+    const L = luminance(data[i],data[i+1],data[i+2]);
+    sum += L; sumSq += L*L; n++;
+  }
+  const mean = sum/n;
+  const varr = Math.max(0, sumSq/n - mean*mean);
+  const stdev = Math.sqrt(varr);
+  // normalize
+  const brightnessN = clamp(mean/255, 0, 1);
+  const contrastN = clamp(stdev/80, 0, 1); // empirical scale
+  return { brightnessN, contrastN, brightnessRaw: mean, contrastRaw: stdev };
+}
+
+// Color harmony + "filter risk"
+function colorStats(imgData){
+  const {data} = imgData;
+  const step = 20;
+  let satSum=0, satSq=0, n=0;
+  // hue histogram (12 bins)
+  const bins = new Array(12).fill(0);
+  for(let i=0;i<data.length;i+=4*step){
+    const r=data[i], g=data[i+1], b=data[i+2];
+    const {h,s,l} = rgbToHsl(r,g,b);
+    satSum += s; satSq += s*s; n++;
+    const bi = Math.min(11, Math.floor(h*12));
+    bins[bi]++;
+  }
+  const satMean = satSum/n;
+  const satVar = Math.max(0, satSq/n - satMean*satMean);
+  const satStd = Math.sqrt(satVar);
+
+  // palette diversity: how many bins active
+  const active = bins.filter(v=>v>n*0.02).length; // >2% presence
+  const paletteDiversity = clamp(active/12, 0, 1);
+
+  // filter risk proxy: very high saturation + low hue diversity often indicates heavy preset
+  const filterRisk = clamp( (satMean-0.55)*1.2 + (0.45-paletteDiversity)*0.9 , 0, 1);
+
+  // harmony proxy: moderate saturation + decent diversity -> pleasant, not chaotic
+  const harmony = clamp( (0.9 - Math.abs(satMean-0.42)) * 0.9 + paletteDiversity*0.6 - satStd*0.4 , 0, 1);
+
+  return { satMean, paletteDiversity, harmony, filterRisk };
+}
+
+// Composition proxy: subject/edge energy distribution, rule-of-thirds proximity
+function compositionStats(imgData){
+  const {data, width:w, height:h} = imgData;
+  const step = Math.max(1, Math.floor(Math.min(w,h)/260)); // adaptive
+  let total=0;
+
+  // energy map: use luminance edge approx by neighbor differences
+  let bestX=0, bestY=0, bestE=-1;
+
+  for(let y=1;y<h-1;y+=step){
+    for(let x=1;x<w-1;x+=step){
+      const i=(y*w+x)*4;
+      const L = luminance(data[i],data[i+1],data[i+2]);
+      const iR=(y*w+(x+1))*4;
+      const iD=((y+1)*w+x)*4;
+      const LR=luminance(data[iR],data[iR+1],data[iR+2]);
+      const LD=luminance(data[iD],data[iD+1],data[iD+2]);
+      const e = Math.abs(L-LR)+Math.abs(L-LD);
+      total += e;
+      if(e>bestE){ bestE=e; bestX=x; bestY=y; }
+    }
+  }
+
+  // rule-of-thirds points
+  const thirds = [
+    {x:w/3, y:h/3},{x:2*w/3, y:h/3},{x:w/3, y:2*h/3},{x:2*w/3, y:2*h/3}
+  ];
+  let minDist=1e9;
+  for(const t of thirds){
+    const d=Math.hypot(bestX-t.x, bestY-t.y);
+    if(d<minDist) minDist=d;
+  }
+  const maxD = Math.hypot(w,h);
+  const thirdsScore = clamp(1 - (minDist/(0.28*maxD)), 0, 1); // closer -> higher
+
+  // center bias (instagram hazır pozlar genelde dead-center)
+  const centerDist = Math.hypot(bestX-w/2, bestY-h/2) / (0.5*maxD);
+  const centerBias = clamp(1 - centerDist, 0, 1); // 1=merkezde
+
+  // framing balance: energy in quadrants
+  const q = [0,0,0,0]; // TL, TR, BL, BR
+  for(let y=1;y<h-1;y+=step*2){
+    for(let x=1;x<w-1;x+=step*2){
+      const i=(y*w+x)*4;
+      const L = luminance(data[i],data[i+1],data[i+2]);
+      const iR=(y*w+(x+1))*4;
+      const iD=((y+1)*w+x)*4;
+      const LR=luminance(data[iR],data[iR+1],data[iR+2]);
+      const LD=luminance(data[iD],data[iD+1],data[iD+2]);
+      const e = Math.abs(L-LR)+Math.abs(L-LD);
+      const idx = (y<h/2 ? 0:2) + (x<w/2 ? 0:1);
+      q[idx]+=e;
+    }
+  }
+  const qSum = q.reduce((a,b)=>a+b,0) || 1;
+  const qN = q.map(v=>v/qSum);
+  // balance: closer to 0.25 each is balanced
+  const balance = 1 - (Math.abs(qN[0]-0.25)+Math.abs(qN[1]-0.25)+Math.abs(qN[2]-0.25)+Math.abs(qN[3]-0.25));
+  const balanceScore = clamp(balance, 0, 1);
+
+  return { thirdsScore, centerBias, balanceScore, focalX:bestX/w, focalY:bestY/h };
+}
+
+// "Subject separation" proxy: center edges vs outer edges
+function separationStats(imgData){
+  const {data, width:w, height:h} = imgData;
+  const step = Math.max(1, Math.floor(Math.min(w,h)/300));
+  const cx0 = Math.floor(w*0.25), cx1 = Math.floor(w*0.75);
+  const cy0 = Math.floor(h*0.25), cy1 = Math.floor(h*0.75);
+
+  let cE=0, oE=0, cN=0, oN=0;
+
+  function localEdge(x,y){
+    const i=(y*w+x)*4;
+    const L = luminance(data[i],data[i+1],data[i+2]);
+    const iR=(y*w+(x+1))*4;
+    const iD=((y+1)*w+x)*4;
+    const LR=luminance(data[iR],data[iR+1],data[iR+2]);
+    const LD=luminance(data[iD],data[iD+1],data[iD+2]);
+    return Math.abs(L-LR)+Math.abs(L-LD);
+  }
+
+  for(let y=1;y<h-2;y+=step){
+    for(let x=1;x<w-2;x+=step){
+      const e=localEdge(x,y);
+      const inCenter = (x>=cx0 && x<=cx1 && y>=cy0 && y<=cy1);
+      if(inCenter){ cE+=e; cN++; } else { oE+=e; oN++; }
+    }
+  }
+  const cMean = cE/(cN||1);
+  const oMean = oE/(oN||1);
+
+  // if center is sharper than outside -> separation, “profesyonel lens/ışık” hissi
+  const sep = clamp((cMean - oMean) / (Math.max(20, oMean)*0.9), 0, 1);
+  return { sep, cMean, oMean };
+}
+
+// Face focus: if FaceDetector exists, measure edge in face box; else center box proxy
+async function faceFocusStats(canvas){
+  const imgData = getImageData(canvas);
+  const {width:w, height:h} = imgData;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // default ROI: center-ish portrait box
+  let rois=[{
+    x: Math.floor(w*0.33), y: Math.floor(h*0.18),
+    w: Math.floor(w*0.34), h: Math.floor(h*0.46),
+    via: "Fallback ROI"
+  }];
+
+  if('FaceDetector' in window){
+    try{
+      const detector = new FaceDetector({ fastMode:true, maxDetectedFaces:2 });
+      const faces = await detector.detect(canvas);
+      if(faces && faces.length){
+        rois = faces.map(f=>{
+          const b=f.boundingBox;
+          return { x:Math.max(0,Math.floor(b.x)), y:Math.max(0,Math.floor(b.y)),
+                   w:Math.max(1,Math.floor(b.width)), h:Math.max(1,Math.floor(b.height)), via:"FaceDetector" };
+        });
+      }
+    }catch(e){
+      // ignore and fallback
+    }
+  }
+
+  function roiEdge(roi){
+    const x0=clamp(roi.x,0,w-2), y0=clamp(roi.y,0,h-2);
+    const x1=clamp(roi.x+roi.w,1,w-1), y1=clamp(roi.y+roi.h,1,h-1);
+    const step = Math.max(1, Math.floor(Math.min(roi.w,roi.h)/120));
+    const data=imgData.data;
+    let sum=0,n=0;
+    for(let y=y0;y<y1-1;y+=step){
+      for(let x=x0;x<x1-1;x+=step){
+        const i=(y*w+x)*4;
+        const L = luminance(data[i],data[i+1],data[i+2]);
+        const iR=(y*w+(x+1))*4;
+        const iD=((y+1)*w+x)*4;
+        const LR=luminance(data[iR],data[iR+1],data[iR+2]);
+        const LD=luminance(data[iD],data[iD+1],data[iD+2]);
+        sum += Math.abs(L-LR)+Math.abs(L-LD);
+        n++;
+      }
+    }
+    return sum/(n||1);
+  }
+
+  const edges = rois.map(r=>roiEdge(r));
+  const best = Math.max(...edges);
+  // normalize roughly
+  const faceSharpN = clamp(best/55, 0, 1);
+
+  return { faceSharpN, method: rois[0].via };
+}
+
+// Creativity proxy: not purely center, balanced but not sterile, decent complexity but not chaotic
+function creativityScore(compo, color, sep, tone){
+  // penalize too much center bias; reward thirds & separation & harmony
+  const centerPenalty = compo.centerBias; // 1=very centered
+  const score =
+    0.30*compo.thirdsScore +
+    0.20*compo.balanceScore +
+    0.20*sep.sep +
+    0.15*color.harmony +
+    0.15*clamp(tone.contrastN*0.9 + (0.7 - Math.abs(tone.brightnessN-0.55))*0.4, 0, 1)
+    - 0.15*centerPenalty;
+
+  return clamp(score, 0, 1);
+}
+
+// Timelessness proxy: natural-ish color, low filter risk, clean contrast, strong face/subject focus
+function timelessScore(color, tone, faceSharpN, sep){
+  const score =
+    0.30*(1 - color.filterRisk) +
+    0.20*color.harmony +
+    0.20*clamp(1 - Math.abs(tone.brightnessN-0.55), 0, 1) +
+    0.15*clamp(1 - Math.abs(tone.contrastN-0.55), 0, 1) +
+    0.15*clamp(faceSharpN*0.8 + sep.sep*0.6, 0, 1);
+  return clamp(score, 0, 1);
+}
+
+// Instagram-ready pose risk (heuristic): extreme center bias + high filter risk + low separation
+function instagramPoseRisk(compo, color, sep){
+  const risk = clamp(0.55*compo.centerBias + 0.30*color.filterRisk + 0.25*(1-sep.sep), 0, 1);
+  return risk;
+}
+
+function overallScore(metrics){
+  // Weighted for “wedding decision”
+  const tech = clamp(0.45*metrics.faceSharpN + 0.30*metrics.sep + 0.25*metrics.contrastN, 0, 1);
+  const art = clamp(0.50*metrics.creativity + 0.50*metrics.timeless, 0, 1);
+  const riskPenalty = 0.20*metrics.igRisk; // reduce score if overly IG/trendy
+
+  const final = clamp(0.55*tech + 0.45*art - riskPenalty, 0, 1);
+  return { tech, art, final };
+}
+
+function buildNarrative(label, m){
+  const strengths=[];
+  const watchouts=[];
+
+  if(m.faceSharpN>0.62) strengths.push("Yüz/özne netliği güven veriyor (çekim disiplini yüksek).");
+  else watchouts.push("Yüz/özne netliği yeterince önde değil; baskı/albumde risk yaratabilir.");
+
+  if(m.sep>0.55) strengths.push("Özne arka plandan iyi ayrışıyor; profesyonel lens/ışık hissi üretir.");
+  else watchouts.push("Özne ayrışması zayıf; “telefon/standart poz” algısı artabilir.");
+
+  if(m.thirdsScore>0.55) strengths.push("Kompozisyon yerleşimi daha bilinçli; bakış yönlendirmesi daha güçlü.");
+  else watchouts.push("Kompozisyon daha düz; hikâye anlatımı tarafı güçlenebilir.");
+
+  if(m.harmony>0.55 && m.filterRisk<0.45) strengths.push("Renk tonu doğal ve tutarlı; zamansızlık hissini destekler.");
+  else if(m.filterRisk>=0.55) watchouts.push("Filtre/preset baskın; trend eskimesi riski var.");
+
+  if(m.creativity>0.55) strengths.push("Sıradan pozun ötesinde, kendine ait bir kurgu/ışık dili sinyali var.");
+  else watchouts.push("Yaratıcılık sinyali düşük; daha çok “hazır Instagram pozu” gibi durabilir.");
+
+  if(m.timeless>0.6) strengths.push("Kuşaktan kuşağa taşınabilir “album değeri” daha yüksek.");
+  else watchouts.push("Zamansızlık metriği orta; duygu kalıcılığı için renk/ışık daha rafine olabilir.");
+
+  const feel =
+    (m.timeless>0.62 && m.faceSharpN>0.6) ? "Duygusal hafıza taşıma kapasitesi yüksek; yıllar sonra da ‘biz’ hissini korur."
+  : (m.timeless>0.52) ? "Duygusal taraf var; ama kalıcılığı artırmak için ton/netlik tarafı güçlenebilir."
+  : "Anlık iyi his verebilir; fakat uzun vadeli arşiv değerinde kırılgan noktalar var.";
+
+  return { strengths, watchouts, feel };
+}
+
+/* =========================
+   APP
+========================= */
+const state = {
+  img1Ready:false, img2Ready:false,
+  m1:null, m2:null
+};
+
+async function analyzeOne(canvasId){
+  const canvas = document.getElementById(canvasId);
+  const imgData = getImageData(canvas);
+
+  const tone = toneStats(imgData);
+  const color = colorStats(imgData);
+  const compo = compositionStats(imgData);
+  const sep = separationStats(imgData);
+  const edges = sobelEdgeStats(imgData);
+  const face = await faceFocusStats(canvas);
+
+  const creativity = creativityScore(compo, color, sep, tone);
+  const timeless = timelessScore(color, tone, face.faceSharpN, sep);
+  const igRisk = instagramPoseRisk(compo, color, sep);
+
+  return {
+    brightnessN: tone.brightnessN,
+    contrastN: tone.contrastN,
+    harmony: color.harmony,
+    filterRisk: color.filterRisk,
+    paletteDiversity: color.paletteDiversity,
+    thirdsScore: compo.thirdsScore,
+    centerBias: compo.centerBias,
+    balanceScore: compo.balanceScore,
+    sep: sep.sep,
+    faceSharpN: face.faceSharpN,
+    faceMethod: face.method,
+    edgeMean: edges.edgeMean,
+    edgeStd: edges.edgeStd,
+    creativity,
+    timeless,
+    igRisk
+  };
+}
+
+function metricLine(m){
+  const t = [];
+  t.push(`Yüz Netliği: ${pct(m.faceSharpN)}%`);
+  t.push(`Özne Ayrışması: ${pct(m.sep)}%`);
+  t.push(`Kompozisyon: ${pct( (m.thirdsScore*0.6 + m.balanceScore*0.4) )}%`);
+  t.push(`Renk Tutarlılığı: ${pct(m.harmony)}%`);
+  t.push(`Yaratıcılık: ${pct(m.creativity)}%`);
+  t.push(`Zamansızlık: ${pct(m.timeless)}%`);
+  t.push(`IG Poz Riski: ${pct(m.igRisk)}%`);
+  return t.join(" • ");
+}
+
+function renderSummary(sumId, m){
+  const s = document.getElementById(sumId);
+  s.textContent = metricLine(m) + ` (Yüz algılama: ${m.faceMethod})`;
+}
+
+function renderResult(m1, m2){
+  const s1 = overallScore(m1);
+  const s2 = overallScore(m2);
+
+  const winner = s1.final >= s2.final ? "Stüdyo 1" : "Stüdyo 2";
+  const wM = (winner==="Stüdyo 1") ? m1 : m2;
+  const lM = (winner==="Stüdyo 1") ? m2 : m1;
+  const wS = (winner==="Stüdyo 1") ? s1 : s2;
+  const lS = (winner==="Stüdyo 1") ? s2 : s1;
+
+  const wNarr = buildNarrative(winner, wM);
+  const lNarr = buildNarrative(winner==="Stüdyo 1" ? "Stüdyo 2":"Stüdyo 1", lM);
+
+  // Decision talk (corporate-ish, direct)
+  const decisionWhy = `
+    Bu karşılaştırmada karar kriterlerini üç eksende konsolide ettik:
+    <span class="pill">Teknik Güven</span>
+    <span class="pill">Sanatsal Değer</span>
+    <span class="pill">Trend Riski</span>.
+    Sonuç olarak <b>${winner}</b> daha yüksek “album değeri” ve daha düşük kırılganlık profili gösteriyor.
+  `;
+
+  const html = `
+    <div class="winner">Tercih Edilmesi Gereken: ${winner}</div>
+    <div class="muted">${decisionWhy}</div>
+
+    <div class="kpi">
+      <div class="box"><div class="label">Stüdyo 1 Genel Skor</div><div class="val">${pct(s1.final)}%</div><div class="bar"><div style="width:${pct(s1.final)}%"></div></div></div>
+      <div class="box"><div class="label">Stüdyo 2 Genel Skor</div><div class="val">${pct(s2.final)}%</div><div class="bar"><div style="width:${pct(s2.final)}%"></div></div></div>
+      <div class="box"><div class="label">Kazanan Teknik Güven</div><div class="val">${pct(wS.tech)}%</div><div class="bar"><div style="width:${pct(wS.tech)}%"></div></div></div>
+      <div class="box"><div class="label">Kazanan Sanatsal Değer</div><div class="val">${pct(wS.art)}%</div><div class="bar"><div style="width:${pct(wS.art)}%"></div></div></div>
+    </div>
+
+    <div class="split">
+      <div class="mini">
+        <strong>${winner} — Neden daha iyi?</strong>
+        <div class="why">
+          ${wNarr.strengths.map(x=>`• ${x}`).join("<br>")}
+          <div style="margin-top:10px" class="muted">${wNarr.feel}</div>
+        </div>
+      </div>
+      <div class="mini">
+        <strong>${winner==="Stüdyo 1" ? "Stüdyo 2":"Stüdyo 1"} — Nerede geride?</strong>
+        <div class="why">
+          ${lNarr.watchouts.length ? lNarr.watchouts.map(x=>`• ${x}`).join("<br>") : "• Belirgin bir risk çıkmadı; ancak toplam profil kazanana göre daha az güçlü."}
+        </div>
+      </div>
+    </div>
+
+    <div class="mini" style="margin-top:12px">
+      <strong>Çiftlere gidecek net tercih mesajı</strong>
+      <div class="why">
+        Bu fotoğraf, <b>yüz/duygu netliğini</b> ve <b>özne ayrışmasını</b> doğru yöneterek “anı”nın ağırlığını taşıyor.
+        Ayrıca renk/ton profili daha <b>zamansız</b>; yani bugün Instagram’da iyi görünmekle kalmıyor, yarın albümde de “hikâye” olarak yaşamaya devam ediyor.
+        Bu yüzden operasyonel risk düşük, çıktının arşiv değeri yüksek: <b>${winner}</b> daha doğru yatırım.
+      </div>
+    </div>
+
+    <div class="muted" style="margin-top:10px">
+      Not: “Duygu” ölçümü doğrudan değil; netlik, özne vurgusu, ton tutarlılığı, trend riski gibi göstergeler üzerinden skorlanır.
+    </div>
+  `;
+
+  document.getElementById("resultBox").innerHTML = html;
+}
+
+function resetAll(){
+  ["image1","image2"].forEach(id=>document.getElementById(id).value="");
+  ["preview1","preview2"].forEach(id=>document.getElementById(id).src="");
+  ["sum1","sum2"].forEach(id=>document.getElementById(id).textContent="Fotoğraf yüklenince analiz özetleri burada görünecek.");
+  setStatus("status1","Bekliyor");
+  setStatus("status2","Bekliyor");
+  state.img1Ready=false; state.img2Ready=false;
+  state.m1=null; state.m2=null;
+  document.getElementById("resultBox").innerHTML = `<div class="muted">Analiz çıktısı burada oluşacak.</div>`;
+}
+
+document.getElementById("resetBtn").addEventListener("click", resetAll);
+
+document.getElementById("image1").addEventListener("change", async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  setStatus("status1","Yükleniyor…");
+  await loadToCanvas(f, document.getElementById("canvas1"), document.getElementById("preview1"));
+  setStatus("status1","Yüklendi");
+  state.img1Ready=true;
+});
+
+document.getElementById("image2").addEventListener("change", async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  setStatus("status2","Yükleniyor…");
+  await loadToCanvas(f, document.getElementById("canvas2"), document.getElementById("preview2"));
+  setStatus("status2","Yüklendi");
+  state.img2Ready=true;
+});
+
+document.getElementById("analyzeBtn").addEventListener("click", async ()=>{
+  if(!state.img1Ready || !state.img2Ready){
+    document.getElementById("resultBox").innerHTML = `<div class="muted">İki fotoğraf da yüklenmeden analiz yapamayız. Süreci tamamlayalım.</div>`;
+    return;
+  }
+  document.getElementById("resultBox").innerHTML = `<div class="muted">Analiz yapılıyor… (tarayıcı içinde, veri dışarı çıkmaz)</div>`;
+
+  try{
+    const m1 = await analyzeOne("canvas1");
+    const m2 = await analyzeOne("canvas2");
+    state.m1=m1; state.m2=m2;
+
+    renderSummary("sum1", m1);
+    renderSummary("sum2", m2);
+    renderResult(m1, m2);
+  }catch(err){
+    document.getElementById("resultBox").innerHTML = `<div class="muted">Analiz sırasında bir hata oluştu. Fotoğrafları yeniden yükleyip tekrar deneyelim.</div>`;
+    console.error(err);
+  }
+});
+</script>
+</body>
+</html>
